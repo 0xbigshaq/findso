@@ -3,7 +3,6 @@
 import logging
 import multiprocessing
 import subprocess
-import time
 import typing
 from posixpath import basename
 
