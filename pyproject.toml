@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "findso"
+version = "1.0.0"
+description = "Find exported symbols in .so files"
+authors = [
+    {name = "faulty ptrrr"}
+]
+requires-python = ">=3.6"
+dependencies = [
+    "pyelftools==0.32",
+    "colorama==0.4.6",
+]
+
+[project.scripts]
+findso = "findso.cli:main" 
