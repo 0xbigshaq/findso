@@ -1,0 +1,119 @@
+import logging
+import subprocess
+import typing
+from posixpath import basename
+
+from colorama import Fore, init
+from elftools.elf.dynamic import DynamicSection
+from elftools.elf.elffile import ELFFile
+
+
+class SymbolFinder:
+    def __init__(self, so_dir: str, verbose: bool = False):
+        self.so_dir = so_dir
+        init()  # Initialize colorama
+        self.logger = logging.getLogger(__class__.__name__)
+        self.logger.setLevel(logging.INFO if verbose else logging.WARNING)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s :: %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+        self.sofiles = self._scan_so_files()
+
+    def find_symbol(self, target_symbol: str, find_all: bool = False) -> typing.List[str]:
+        self._info('Looking up %s', target_symbol)
+        found_paths = []
+
+        for path in self.sofiles:
+            try:
+                with open(path, 'rb') as f:
+                    elffile = ELFFile(f)
+                    # Find the dynamic section
+                    dynamic_section = None
+                    for section in elffile.iter_sections():
+                        if isinstance(section, DynamicSection):
+                            dynamic_section = section
+                            break
+                    if not dynamic_section:
+                        continue  # No dynamic section, skip
+                    # Now get the dynamic symbol table
+                    dynsym = elffile.get_section_by_name('.dynsym')
+                    if not dynsym:
+                        continue
+
+                    for symbol in dynsym.iter_symbols():
+                        is_defined = symbol['st_shndx'] != 'SHN_UNDEF'
+                        is_function = symbol['st_info']['type'] == 'STT_FUNC'
+                        has_addr = symbol['st_value'] != 0
+                        if (symbol.name == target_symbol and is_defined and is_function and has_addr):
+                            self._success("Found %s in %s",
+                                          target_symbol, path)
+                            found_paths.append(path)
+                            if not find_all:
+                                return found_paths
+                            break
+
+                    if not find_all and not found_paths:
+                        self._info("No %s in %s", target_symbol,
+                                   basename(path))
+            except Exception:
+                self._error("Error processing %s", path)
+                continue  # skip malformed files
+
+        return found_paths
+
+    def _scan_so_files(self) -> typing.List[str]:
+        try:
+            # Find all .so* files
+            result = subprocess.run(
+                ['find', self.so_dir, '-name', '*.so*'],
+                capture_output=True,
+                text=True,
+                check=False  # Don't raise on non-zero exit
+            )
+            if result.returncode != 0:
+                self._warn(
+                    "Directory %s not found or not accessible", self.so_dir)
+                return []
+
+            sofiles = result.stdout.splitlines()
+            if not sofiles:
+                return []
+
+            # Filter to ELF files only
+            elf_files = []
+            for path in sofiles:
+                try:
+                    result = subprocess.run(
+                        ['file', path],
+                        capture_output=True,
+                        text=True,
+                        check=False
+                    )
+                    if 'ELF' in result.stdout:
+                        elf_files.append(path)
+                except Exception:
+                    continue
+            return elf_files
+        except Exception as e:
+            self._error("Error scanning directory: %s", str(e))
+            return []
+
+    def _success(self, message: str, *args, **kwargs) -> None:
+        formatted_message = message % args
+        self.logger.info("%s%s%s", Fore.GREEN, formatted_message, Fore.RESET)
+
+    def _warn(self, message: str, *args, **kwargs) -> None:
+        formatted_message = message % args
+        self.logger.warning("%s%s%s", Fore.YELLOW,
+                            formatted_message, Fore.RESET)
+
+    def _error(self, message: str, *args, **kwargs) -> None:
+        formatted_message = message % args
+        self.logger.error("%s%s%s", Fore.RED, formatted_message, Fore.RESET)
+
+    def _info(self, message: str, *args, **kwargs) -> None:
+        formatted_message = message % args
+        self.logger.info(formatted_message)
