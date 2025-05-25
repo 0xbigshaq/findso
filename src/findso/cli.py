@@ -2,6 +2,7 @@
 
 import argparse
 
+from findso import __version__
 from findso.core import SymbolFinder
 
 
@@ -24,6 +25,7 @@ def main():
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument("--version", action="version", version=f"v{__version__}")
     parser.add_argument("so_dir", help="Directory containing .so files")
     parser.add_argument("symbol", help="Symbol name to search for")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
