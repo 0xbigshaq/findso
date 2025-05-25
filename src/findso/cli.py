@@ -55,7 +55,7 @@ def main():
 
     # Set up logging
     logger = logging.getLogger("findso")
-    logger.setLevel(logging.INFO if args.verbose else logging.WARNING)
+    logger.setLevel(logging.DEBUG if args.verbose else logging.INFO)
     if not logger.handlers:
         handler = logging.StreamHandler()
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - [%(processName)s] :: %(message)s")
@@ -63,18 +63,16 @@ def main():
         logger.addHandler(handler)
 
     # Log the initial search message
-    if args.verbose:
-        logger.info("Looking up %s", args.symbol)
+    logger.info("Looking up %s", args.symbol)
 
     # Scan for .so files
     scan_start = time.time()
     so_files = scan_so_files(args.so_dir, logger)
     scan_time = time.time() - scan_start
-    if args.verbose:
-        logger.info("Scanned %d files in %.2f seconds", len(so_files), scan_time)
+    logger.debug("Scanned %d files in %.2f seconds", len(so_files), scan_time)
 
     if not so_files:
-        print(f"[!] No .so files found in {args.so_dir}")
+        logger.warning("No .so files found in %s", args.so_dir)
         return
 
     # Process files in parallel if requested
@@ -84,8 +82,7 @@ def main():
         chunk_size = max(1, min(50, len(so_files) // (args.jobs * 2)))
         chunks = [so_files[i : i + chunk_size] for i in range(0, len(so_files), chunk_size)]
 
-        if args.verbose:
-            logger.info("Processing %d chunks with %d processes", len(chunks), args.jobs)
+        logger.debug("Processing %d chunks with %d processes", len(chunks), args.jobs)
 
         # Process chunks in parallel
         with multiprocessing.Pool(processes=args.jobs) as pool:
@@ -113,27 +110,26 @@ def main():
             pool.join()
 
             process_time = time.time() - process_start
-            if args.verbose:
-                logger.info("Processed chunks in %.2f seconds", process_time)
+            logger.debug("Processed chunks in %.2f seconds", process_time)
     else:
         # Single-process processing
         process_start = time.time()
         finder = SymbolFinder(so_files, verbose=args.verbose)
         found_paths = finder.find_symbol(args.symbol, find_all=args.all)
         process_time = time.time() - process_start
-        if args.verbose:
-            logger.info("Processed files in %.2f seconds", process_time)
+        logger.debug("Processed files in %.2f seconds", process_time)
 
     total_time = time.time() - start_time
-    if args.verbose:
-        logger.info("Total execution time: %.2f seconds", total_time)
+    logger.debug("Total execution time: %.2f seconds", total_time)
 
     # Print results
     if found_paths:
         for path in found_paths:
-            print(f"[*] {path}")
+            logger.info("Found %s", path)
     else:
-        print(f"[!] No matches found for {args.symbol} in {args.so_dir}")
+        logger.info("No matches found for %s in %s", args.symbol, args.so_dir)
+
+    logger.info("Total matches: %d", len(found_paths))
 
 
 if __name__ == "__main__":
